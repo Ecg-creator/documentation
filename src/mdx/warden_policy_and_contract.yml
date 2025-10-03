@@ -1,0 +1,68 @@
+name: Warden Policy & Contract CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  policy:
+    name: Policy Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run policy linter (v2)
+        run: |
+          python warden_policy_lint_v2.py
+      - name: Upload policy reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: warden-policy-reports
+          path: |
+            warden_policy_report.v2.json
+            warden_policy_rules.v2.yaml
+
+  contract:
+    name: Contract Tests (FastAPI mock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements.txt -r requirements.tests.txt
+      - name: Launch mock server
+        run: |
+          source .venv/bin/activate
+          # Start uvicorn in background
+          uvicorn vsr_mock_server:app --host 0.0.0.0 --port 8080 &
+          echo $! > server.pid
+          # Wait for server to come up
+          for i in {1..30}; do
+            if curl -sSf http://localhost:8080/_debug/state > /dev/null; then
+              echo "Server is up."
+              break
+            fi
+            sleep 1
+          done
+      - name: Run pytest
+        env:
+          VSR_BASE: http://localhost:8080
+        run: |
+          source .venv/bin/activate
+          pytest -q
+      - name: Teardown mock server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+          fi
