@@ -1,0 +1,31 @@
+version: "3.8"
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports: [ "4000:4000" ]
+    environment: [ PORT=4000 ]
+    depends_on: [ mock_research, mock_compliance ]
+    networks: [ vsr-net ]
+  local-agent:
+    build:
+      context: ./local-agent
+      dockerfile: Dockerfile
+    ports: [ "4001:4001" ]
+    environment: [ PORT=4001, KEY_PATH=/data/keys/private.pem ]
+    volumes: [ ./local-agent/keys:/data/keys:rw ]
+    networks: [ vsr-net ]
+  mock_research:
+    image: node:18-alpine
+    command: sh -c "node /opt/mock_research/index.js"
+    volumes: [ ./server/mocks/research:/opt/mock_research ]
+    networks: [ vsr-net ]
+  mock_compliance:
+    image: node:18-alpine
+    command: sh -c "node /opt/mock_compliance/index.js"
+    volumes: [ ./server/mocks/compliance:/opt/mock_compliance ]
+    networks: [ vsr-net ]
+networks:
+  vsr-net:
+    driver: bridge
